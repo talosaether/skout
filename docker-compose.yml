@@ -18,6 +18,9 @@ services:
       FLASK_DEBUG: "1"
     depends_on: [db]
     ports: ["8000:8000"]
+    volumes:
+      - server_data:/app/data
 
 volumes:
   pgdata:
+  server_data:

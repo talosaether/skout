@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { uploadBlob } from "../lib/api";
 
-export default function CameraCapture() {
+interface CameraCaptureProps {
+  onUploadSuccess?: () => void;
+}
+
+export default function CameraCapture({ onUploadSuccess }: CameraCaptureProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
@@ -75,6 +79,7 @@ export default function CameraCapture() {
 
     try {
       await uploadBlob(blob, `capture_${Date.now()}.jpg`);
+      onUploadSuccess?.();
     } catch (e: any) {
       setError(e?.message ?? "Upload failed");
     } finally {

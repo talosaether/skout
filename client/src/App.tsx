@@ -27,7 +27,7 @@ export default function App() {
           <button onClick={refresh} className="px-3 py-2 bg-slate-700 rounded-xl">Refresh</button>
         </header>
 
-        <CameraCapture />
+        <CameraCapture onUploadSuccess={refresh} />
 
         <section>
           <h2 className="text-xl font-semibold mt-6 mb-2">Assets ({total})</h2>

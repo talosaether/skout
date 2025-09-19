@@ -9,23 +9,49 @@ export default function CameraCapture() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let stream: MediaStream;
-    (async () => {
+    let stream: MediaStream | null = null;
+    let mounted = true;
+
+    const initCamera = async () => {
       try {
+        // Check if mediaDevices is available
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          throw new Error("Camera API not available. HTTPS is required for camera access.");
+        }
+
         stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: "environment" } },
           audio: false
         });
-        if (videoRef.current) {
+
+        if (mounted && videoRef.current && stream) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-          setReady(true);
+          try {
+            await videoRef.current.play();
+            if (mounted) setReady(true);
+          } catch (playError) {
+            console.warn("Video play interrupted:", playError);
+          }
         }
       } catch (e: any) {
-        setError(e?.message ?? "Camera access failed (https required?)");
+        if (mounted) {
+          setError(e?.message ?? "Camera access failed (HTTPS required)");
+        }
       }
-    })();
-    return () => { stream?.getTracks().forEach(t => t.stop()); };
+    };
+
+    initCamera();
+
+    return () => {
+      mounted = false;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      setReady(false);
+    };
   }, []);
 
   const capture = async () => {

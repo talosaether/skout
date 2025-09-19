@@ -6,7 +6,7 @@ create table if not exists assets (
   filename text not null,
   mime text not null,
   size integer not null,
-  data bytea not null
+  file_hash text not null
 );
 
 -- Basic pagination helper index

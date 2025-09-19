@@ -4,6 +4,7 @@ from flask import Flask, jsonify, request, abort, send_file
 from flask_cors import CORS
 from db import tx, get_conn
 import psycopg
+from storage import save_file, load_file, delete_file, get_file_hash
 
 MAX_BYTES = 7 * 1024 * 1024  # 7MB MVP cap
 
@@ -33,7 +34,7 @@ def list_assets():
             cur.execute("select count(*) from assets")
             total = cur.fetchone()[0]
             cur.execute("""
-                select id::text, created_at, filename, mime, octet_length(data) as size
+                select id::text, created_at, filename, mime, size
                 from assets
                 order by created_at desc
                 limit %s offset %s
@@ -55,12 +56,15 @@ def create_asset():
     if len(data) > MAX_BYTES:
         return abort(413, "File too large")
 
+    # Save file to disk and get hash
+    file_hash = save_file(data)
+
     with tx() as cur:
         cur.execute("""
-            insert into assets (filename, mime, size, data)
+            insert into assets (filename, mime, size, file_hash)
             values (%s, %s, %s, %s)
             returning id::text, created_at
-        """, (f.filename or "image.jpg", f.mimetype, len(data), psycopg.Binary(data)))
+        """, (f.filename or "image.jpg", f.mimetype, len(data), file_hash))
         (id_, created_at) = cur.fetchone()
 
     return jsonify({"id": id_, "created_at": created_at.isoformat()}), 201
@@ -70,20 +74,40 @@ def get_asset(id: str):
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("""
-                select filename, mime, data from assets where id = %s
+                select filename, mime, file_hash from assets where id = %s
             """, (id,))
             row = cur.fetchone()
             if not row:
                 return abort(404)
-            filename, mime, data = row
-    return send_file(io.BytesIO(bytes(data)), mimetype=mime, download_name=filename)
+            filename, mime, file_hash = row
+
+    try:
+        data = load_file(file_hash)
+    except FileNotFoundError:
+        return abort(404, "File not found on disk")
+
+    return send_file(io.BytesIO(data), mimetype=mime, download_name=filename)
 
 @app.delete("/api/assets/<id>")
 def delete_asset(id: str):
     with tx() as cur:
-        cur.execute("delete from assets where id = %s returning 1", (id,))
-        if cur.fetchone() is None:
+        # Get file hash before deleting from database
+        cur.execute("select file_hash from assets where id = %s", (id,))
+        row = cur.fetchone()
+        if row is None:
             return abort(404)
+        file_hash = row[0]
+
+        # Delete from database
+        cur.execute("delete from assets where id = %s", (id,))
+
+        # Check if any other assets reference this file
+        cur.execute("select count(*) from assets where file_hash = %s", (file_hash,))
+        ref_count = cur.fetchone()[0]
+
+        # Only delete file if no other assets reference it
+        if ref_count == 0:
+            delete_file(file_hash)
     return jsonify({"deleted": id})
 
 if __name__ == "__main__":

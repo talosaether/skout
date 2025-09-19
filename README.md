@@ -57,7 +57,7 @@ docker compose up -d --build
 ```bash
 cd client
 npm install
-npm run dev
+npm run dev -- --host 0.0.0.0
 ```
 
 ### 4. Access the Application

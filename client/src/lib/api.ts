@@ -21,6 +21,13 @@ export async function uploadBlob(file: Blob, filename: string) {
 }
 
 export async function deleteAsset(id: string) {
+  console.log("Making DELETE request to:", `/api/assets/${id}`);
   const res = await fetch(`/api/assets/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("Delete failed");
+  console.log("Delete response status:", res.status);
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error("Delete failed with response:", errorText);
+    throw new Error(`Delete failed: ${res.status} ${errorText}`);
+  }
+  console.log("Delete successful");
 }

@@ -1,5 +1,6 @@
 import os
 import io
+import uuid
 from flask import Flask, jsonify, request, abort, send_file
 from flask_cors import CORS
 from db import tx, get_conn
@@ -16,6 +17,13 @@ def ensure_schema():
     with open(path, "r") as f, get_conn() as conn:
         conn.execute(f.read())
         conn.commit()
+
+def is_valid_uuid(id_str):
+    try:
+        uuid.UUID(id_str)
+        return True
+    except ValueError:
+        return False
 
 # Initialize database schema on startup
 with app.app_context():
@@ -67,19 +75,31 @@ def create_asset():
         """, (f.filename or "image.jpg", f.mimetype, len(data), file_hash))
         (id_, created_at) = cur.fetchone()
 
-    return jsonify({"id": id_, "created_at": created_at.isoformat()}), 201
+    return jsonify({
+        "id": id_,
+        "created_at": created_at.isoformat(),
+        "filename": f.filename or "image.jpg",
+        "mime": f.mimetype,
+        "size": len(data)
+    }), 201
 
 @app.get("/api/assets/<id>")
 def get_asset(id: str):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                select filename, mime, file_hash from assets where id = %s
-            """, (id,))
-            row = cur.fetchone()
-            if not row:
-                return abort(404)
-            filename, mime, file_hash = row
+    if not is_valid_uuid(id):
+        return abort(404)
+
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    select filename, mime, file_hash from assets where id = %s
+                """, (id,))
+                row = cur.fetchone()
+                if not row:
+                    return abort(404)
+                filename, mime, file_hash = row
+    except (psycopg.Error, ValueError) as e:
+        return abort(404)
 
     try:
         data = load_file(file_hash)
@@ -90,24 +110,30 @@ def get_asset(id: str):
 
 @app.delete("/api/assets/<id>")
 def delete_asset(id: str):
-    with tx() as cur:
-        # Get file hash before deleting from database
-        cur.execute("select file_hash from assets where id = %s", (id,))
-        row = cur.fetchone()
-        if row is None:
-            return abort(404)
-        file_hash = row[0]
+    if not is_valid_uuid(id):
+        return abort(404)
 
-        # Delete from database
-        cur.execute("delete from assets where id = %s", (id,))
+    try:
+        with tx() as cur:
+            # Get file hash before deleting from database
+            cur.execute("select file_hash from assets where id = %s", (id,))
+            row = cur.fetchone()
+            if row is None:
+                return abort(404)
+            file_hash = row[0]
 
-        # Check if any other assets reference this file
-        cur.execute("select count(*) from assets where file_hash = %s", (file_hash,))
-        ref_count = cur.fetchone()[0]
+            # Delete from database
+            cur.execute("delete from assets where id = %s", (id,))
 
-        # Only delete file if no other assets reference it
-        if ref_count == 0:
-            delete_file(file_hash)
+            # Check if any other assets reference this file
+            cur.execute("select count(*) from assets where file_hash = %s", (file_hash,))
+            ref_count = cur.fetchone()[0]
+
+            # Only delete file if no other assets reference it
+            if ref_count == 0:
+                delete_file(file_hash)
+    except (psycopg.Error, ValueError) as e:
+        return abort(404)
     return jsonify({"deleted": id})
 
 if __name__ == "__main__":

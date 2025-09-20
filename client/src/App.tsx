@@ -25,11 +25,14 @@ export default function App() {
 
   const handleDelete = async (id: string) => {
     try {
+      console.log("Attempting to delete asset with ID:", id);
       await deleteAsset(id);
+      console.log("Asset deleted successfully");
       await refresh();
       setDeleteConfirm(null);
     } catch (error) {
       console.error("Failed to delete asset:", error);
+      alert("Failed to delete photo. Please try again.");
     }
   };
 
@@ -93,7 +96,7 @@ export default function App() {
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
               {assets.map(a => (
-                <div key={a.id} className="bg-slate-800 rounded-2xl p-3 space-y-3 hover:bg-slate-750 transition-all duration-200 group">
+                <div key={a.id} className="bg-slate-800 rounded-2xl p-3 space-y-3 hover:bg-slate-700 transition-all duration-200 group">
                   <div
                     className="relative cursor-pointer"
                     onClick={() => setSelectedAsset(a)}
@@ -113,7 +116,10 @@ export default function App() {
                     {a.filename}
                   </div>
                   <button
-                    onClick={() => setDeleteConfirm(a.id)}
+                    onClick={() => {
+                      console.log("Delete button clicked for asset:", a.id);
+                      setDeleteConfirm(a.id);
+                    }}
                     className="w-full px-3 py-2 bg-rose-600 hover:bg-rose-500 transition-colors duration-200 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -151,7 +157,12 @@ export default function App() {
                 Cancel
               </button>
               <button
-                onClick={() => handleDelete(deleteConfirm)}
+                onClick={() => {
+                  console.log("Confirm delete button clicked for:", deleteConfirm);
+                  if (deleteConfirm) {
+                    handleDelete(deleteConfirm);
+                  }
+                }}
                 className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 transition-colors duration-200 rounded-xl"
               >
                 Delete

@@ -1,0 +1,19 @@
+{
+  "name": "skout",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Photo Vault - A PWA for capturing and managing photos",
+  "main": "e2e-test.js",
+  "scripts": {
+    "test": "node e2e-test.js",
+    "dev:client": "cd client && npm run dev",
+    "dev:server": "cd server && python app.py",
+    "dev": "docker compose up -d && npm run dev:client"
+  },
+  "dependencies": {
+    "form-data": "^4.0.4"
+  },
+  "keywords": ["photo", "pwa", "crud", "camera"],
+  "author": "",
+  "license": "MIT"
+}

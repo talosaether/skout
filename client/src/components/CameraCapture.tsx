@@ -139,17 +139,52 @@ export default function CameraCapture({ onUploadSuccess }: CameraCaptureProps) {
         />
 
         {ready && (
-          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+          <div style={{
+            position: 'absolute',
+            bottom: '16px',
+            left: '50%',
+            transform: 'translateX(-50%)'
+          }}>
             <button
               onClick={capture}
               disabled={busy}
-              className="w-16 h-16 bg-white rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition-all duration-200 disabled:opacity-50 disabled:scale-100"
+              style={{
+                width: '64px',
+                height: '64px',
+                backgroundColor: 'white',
+                borderRadius: '50%',
+                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                border: 'none',
+                cursor: busy ? 'not-allowed' : 'pointer',
+                transition: 'transform 0.2s',
+                opacity: busy ? 0.5 : 1
+              }}
+              onMouseOver={(e) => !busy && (e.target.style.transform = 'scale(1.1)')}
+              onMouseOut={(e) => !busy && (e.target.style.transform = 'scale(1)')}
             >
               {busy ? (
-                <div className="w-6 h-6 border-2 border-slate-600 border-t-transparent rounded-full animate-spin"></div>
+                <div style={{
+                  width: '24px',
+                  height: '24px',
+                  border: '2px solid #475569',
+                  borderTop: '2px solid transparent',
+                  borderRadius: '50%',
+                  animation: 'spin 1s linear infinite'
+                }}></div>
               ) : (
-                <div className="w-12 h-12 bg-sky-600 rounded-full flex items-center justify-center">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <div style={{
+                  width: '48px',
+                  height: '48px',
+                  backgroundColor: '#0ea5e9',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <svg style={{ width: '24px', height: '24px', color: 'white' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
                   </svg>

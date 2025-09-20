@@ -25,9 +25,7 @@ export default function App() {
 
   const handleDelete = async (id: string) => {
     try {
-      console.log("Attempting to delete asset with ID:", id);
       await deleteAsset(id);
-      console.log("Asset deleted successfully");
       await refresh();
       setDeleteConfirm(null);
     } catch (error) {
@@ -116,10 +114,7 @@ export default function App() {
                     {a.filename}
                   </div>
                   <button
-                    onClick={() => {
-                      console.log("Delete button clicked for asset:", a.id);
-                      setDeleteConfirm(a.id);
-                    }}
+                    onClick={() => setDeleteConfirm(a.id)}
                     className="w-full px-3 py-2 bg-rose-600 hover:bg-rose-500 transition-colors duration-200 rounded-xl text-sm font-medium flex items-center justify-center gap-2"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -136,34 +131,77 @@ export default function App() {
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 rounded-2xl p-6 max-w-sm w-full space-y-4 shadow-2xl">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-rose-100 rounded-full flex items-center justify-center">
-                <svg className="w-5 h-5 text-rose-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '16px',
+          zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: '#1e293b',
+            borderRadius: '16px',
+            padding: '24px',
+            maxWidth: '400px',
+            width: '100%',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+            color: 'white'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
+              <div style={{
+                width: '40px',
+                height: '40px',
+                backgroundColor: '#fef2f2',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <svg style={{ width: '20px', height: '20px', color: '#dc2626' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.982 16c-.77.833.192 2.5 1.732 2.5z" />
                 </svg>
               </div>
               <div>
-                <h3 className="font-semibold">Delete Photo</h3>
-                <p className="text-sm text-slate-400">This action cannot be undone</p>
+                <h3 style={{ fontWeight: '600', margin: 0, fontSize: '18px' }}>Delete Photo</h3>
+                <p style={{ fontSize: '14px', color: '#94a3b8', margin: '4px 0 0 0' }}>This action cannot be undone</p>
               </div>
             </div>
-            <div className="flex gap-3">
+            <div style={{ display: 'flex', gap: '12px' }}>
               <button
                 onClick={() => setDeleteConfirm(null)}
-                className="flex-1 px-4 py-2 bg-slate-700 hover:bg-slate-600 transition-colors duration-200 rounded-xl"
+                style={{
+                  flex: 1,
+                  padding: '12px 16px',
+                  backgroundColor: '#374151',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
               >
                 Cancel
               </button>
               <button
-                onClick={() => {
-                  console.log("Confirm delete button clicked for:", deleteConfirm);
-                  if (deleteConfirm) {
-                    handleDelete(deleteConfirm);
-                  }
+                onClick={() => handleDelete(deleteConfirm)}
+                style={{
+                  flex: 1,
+                  padding: '12px 16px',
+                  backgroundColor: '#dc2626',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: '500'
                 }}
-                className="flex-1 px-4 py-2 bg-rose-600 hover:bg-rose-500 transition-colors duration-200 rounded-xl"
               >
                 Delete
               </button>

@@ -14,7 +14,7 @@ export default defineConfig({
         name: "MVP CRUD Camera",
         short_name: "MVP",
         start_url: "/",
-        display: "standalone",
+        display: "fullscreen",
         background_color: "#0f172a",
         theme_color: "#0ea5e9",
         icons: [
@@ -25,6 +25,8 @@ export default defineConfig({
     })
   ],
   server: {
+    host: "0.0.0.0", // Bind to all interfaces to allow external access
+    port: 5173,
     proxy: {
       "/api": "http://localhost:8000" // dev proxy to Flask
     }

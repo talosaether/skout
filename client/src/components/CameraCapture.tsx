@@ -170,8 +170,8 @@ export default function CameraCapture({ onUploadSuccess, token }: CameraCaptureP
                 transition: 'transform 0.2s',
                 opacity: busy ? 0.5 : 1
               }}
-              onMouseOver={(e) => !busy && (e.target.style.transform = 'scale(1.1)')}
-              onMouseOut={(e) => !busy && (e.target.style.transform = 'scale(1)')}
+              onMouseOver={(e) => !busy && ((e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.1)')}
+              onMouseOut={(e) => !busy && ((e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)')}
             >
               {busy ? (
                 <div style={{

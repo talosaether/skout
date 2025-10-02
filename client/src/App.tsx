@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import CameraCapture from "./components/CameraCapture";
-import { listAssets, deleteAsset } from "./lib/api";
+import AuthForm from "./components/AuthForm";
+import { listAssets, deleteAsset, AuthError } from "./lib/api";
+import { useAuth } from "./contexts/AuthContext";
 import type { Asset } from "./lib/api";
 
 export default function App() {
+  const { isAuthenticated, loading: authLoading, user, token, logout } = useAuth();
   const [assets, setAssets] = useState<Asset[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -11,30 +14,64 @@ export default function App() {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
 
   async function refresh() {
+    if (!token) return;
+
     try {
       setLoading(true);
-      const res = await listAssets(50, 0);
+      const res = await listAssets(50, 0, token);
       setAssets(res.items);
       setTotal(res.total);
     } catch (error) {
-      console.error("Failed to load assets:", error);
+      if (error instanceof AuthError) {
+        // Token expired or invalid, logout
+        logout();
+      } else {
+        console.error("Failed to load assets:", error);
+      }
     } finally {
       setLoading(false);
     }
   }
 
   const handleDelete = async (id: string) => {
+    if (!token) return;
+
     try {
-      await deleteAsset(id);
+      await deleteAsset(id, token);
       await refresh();
       setDeleteConfirm(null);
     } catch (error) {
-      console.error("Failed to delete asset:", error);
-      alert("Failed to delete photo. Please try again.");
+      if (error instanceof AuthError) {
+        logout();
+      } else {
+        console.error("Failed to delete asset:", error);
+        alert("Failed to delete photo. Please try again.");
+      }
     }
   };
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => {
+    if (isAuthenticated) {
+      refresh();
+    }
+  }, [isAuthenticated]);
+
+  // Show loading spinner while checking auth
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 mx-auto border-4 border-sky-600 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show auth form if not authenticated
+  if (!isAuthenticated) {
+    return <AuthForm />;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-100">
@@ -44,21 +81,34 @@ export default function App() {
             <h1 className="text-3xl sm:text-4xl font-bold bg-gradient-to-r from-sky-400 to-cyan-300 bg-clip-text text-transparent">
               📸 Photo Vault
             </h1>
-            <p className="text-slate-400 mt-1">Capture, store, and manage your photos</p>
+            <p className="text-slate-400 mt-1">
+              {user?.email && <span>Welcome back, <span className="text-sky-400">{user.email}</span></span>}
+            </p>
           </div>
-          <button
-            onClick={refresh}
-            disabled={loading}
-            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 transition-all duration-200 rounded-xl flex items-center gap-2 shadow-lg"
-          >
-            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            {loading ? 'Loading...' : 'Refresh'}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={refresh}
+              disabled={loading}
+              className="px-4 py-2 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 transition-all duration-200 rounded-xl flex items-center gap-2 shadow-lg"
+            >
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              {loading ? 'Loading...' : 'Refresh'}
+            </button>
+            <button
+              onClick={logout}
+              className="px-4 py-2 bg-rose-600 hover:bg-rose-500 transition-all duration-200 rounded-xl flex items-center gap-2 shadow-lg"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Logout
+            </button>
+          </div>
         </header>
 
-        <CameraCapture onUploadSuccess={refresh} />
+        <CameraCapture onUploadSuccess={refresh} token={token} />
 
         <section className="space-y-6">
           <div className="flex items-center justify-between">

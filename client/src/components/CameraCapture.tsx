@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { uploadBlob } from "../lib/api";
+import { uploadBlob, AuthError } from "../lib/api";
+import { useAuth } from "../contexts/AuthContext";
 
 interface CameraCaptureProps {
   onUploadSuccess?: () => void;
+  token: string | null;
 }
 
-export default function CameraCapture({ onUploadSuccess }: CameraCaptureProps) {
+export default function CameraCapture({ onUploadSuccess, token }: CameraCaptureProps) {
+  const { logout } = useAuth();
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [ready, setReady] = useState(false);
@@ -80,11 +83,16 @@ export default function CameraCapture({ onUploadSuccess }: CameraCaptureProps) {
     }
 
     try {
-      await uploadBlob(blob, `capture_${Date.now()}.jpg`);
+      await uploadBlob(blob, `capture_${Date.now()}.jpg`, token ?? undefined);
       onUploadSuccess?.();
     } catch (e: unknown) {
-      const error = e as Error;
-      setError(error?.message ?? "Upload failed");
+      if (e instanceof AuthError) {
+        // Token expired, logout
+        logout();
+      } else {
+        const error = e as Error;
+        setError(error?.message ?? "Upload failed");
+      }
     } finally {
       setBusy(false);
     }

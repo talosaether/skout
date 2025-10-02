@@ -1,0 +1,517 @@
+# Skout - LLM Context File
+
+## Project Summary
+Mobile-first PWA for camera-based image capture and management. React/Vite frontend, Flask/PostgreSQL backend, hash-based file storage. MVP philosophy: no ORM, direct SQL, minimal ceremony.
+
+---
+
+## Architecture Overview
+
+### Stack
+- **Frontend**: React 18 + TypeScript + Vite + TailwindCSS + PWA
+- **Backend**: Flask + psycopg (PostgreSQL driver) + raw SQL
+- **Storage**: Hash-based file system (SHA-256) with PostgreSQL metadata
+- **Database**: PostgreSQL 16 with uuid-ossp extension
+- **Deployment**: Docker Compose (3 services: db, server, client dev optional)
+
+### Design Principles
+1. **Direct SQL over ORM** - Full control, better performance for simple CRUD
+2. **Hash-based storage** - Content-addressable deduplication, filesystem performance
+3. **Mobile-first PWA** - HTTPS required for camera API, offline-ready
+4. **Inline styles for CSS conflicts** - Override framework cascades when needed
+
+---
+
+## Data Model
+
+### Database Schema (`schema.sql`)
+```sql
+assets (
+  id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  filename text NOT NULL,
+  mime text NOT NULL,
+  size integer NOT NULL,
+  file_hash text NOT NULL,
+  INDEX idx_assets_created_at ON created_at DESC
+)
+```
+
+### File Storage Structure
+```
+/app/data/
+  ├── ab/
+  │   └── c1/
+  │       └── abc123... (full SHA-256 hash)
+  └── de/
+      └── f4/
+          └── def456...
+```
+
+---
+
+## Backend API (`server/`)
+
+### `app.py` - Flask Application
+
+**Functions:**
+
+- `ensure_schema() -> None`
+  Idempotent schema initialization from `schema.sql` on startup
+
+- `is_valid_uuid(id_str: str) -> bool`
+  UUID validation helper for route params
+
+**Endpoints:**
+
+- `GET /api/health`
+  Health check returning `{"ok": true}`
+
+- `GET /api/assets?limit=20&offset=0`
+  Paginated asset list (max 100/page)
+  Returns: `{"items": Asset[], "total": int}`
+
+- `POST /api/assets`
+  Upload image via multipart/form-data
+  Validates: mime type (image/*), size (7MB max)
+  Returns: `Asset` with 201 status
+
+- `GET /api/assets/<uuid>`
+  Retrieve image binary with Content-Type from metadata
+  Returns: file stream with proper MIME type
+
+- `DELETE /api/assets/<uuid>`
+  Delete asset metadata and file (if no other refs)
+  Reference-counted deletion prevents orphans
+  Returns: `{"deleted": uuid}`
+
+**Constants:**
+- `MAX_BYTES = 7 * 1024 * 1024` (7MB upload limit)
+
+---
+
+### `db.py` - Database Connection
+
+**Functions:**
+
+- `get_conn() -> psycopg.Connection`
+  Create new connection to PostgreSQL (manual transaction control)
+  DSN from `DATABASE_URL` env var
+
+- `@contextmanager tx() -> Generator[psycopg.Cursor]`
+  Transaction context manager with auto-commit/rollback
+  Usage: `with tx() as cur: cur.execute(...)`
+
+---
+
+### `storage.py` - File System Operations
+
+**Functions:**
+
+- `get_file_hash(data: bytes) -> str`
+  Generate SHA-256 hash hex digest of file data
+
+- `get_storage_path(file_hash: str, base_dir: str = "/app/data") -> Path`
+  Build hierarchical path: `base_dir/hash[:2]/hash[2:4]/hash`
+
+- `save_file(data: bytes, base_dir: str = "/app/data") -> str`
+  Hash data, write to path, auto-dedup if exists
+  Returns: file hash string
+
+- `load_file(file_hash: str, base_dir: str = "/app/data") -> bytes`
+  Read file from hash-based path
+  Raises: `FileNotFoundError` if missing
+
+- `delete_file(file_hash: str, base_dir: str = "/app/data") -> bool`
+  Delete file and cleanup empty parent dirs
+  Returns: True if deleted, False if not found
+
+- `file_exists(file_hash: str, base_dir: str = "/app/data") -> bool`
+  Check if file exists in storage
+
+---
+
+## Frontend API (`client/src/`)
+
+### `lib/api.ts` - HTTP Client
+
+**Types:**
+```typescript
+Asset {
+  id: string;          // UUID
+  created_at: string;  // ISO 8601
+  filename: string;
+  mime: string;
+  size: number;        // bytes
+}
+```
+
+**Functions:**
+
+- `async listAssets(limit = 20, offset = 0) -> {items: Asset[], total: number}`
+  Fetch paginated asset list from `/api/assets`
+
+- `async uploadBlob(file: Blob, filename: string) -> Asset`
+  POST multipart form data to `/api/assets`
+
+- `async deleteAsset(id: string) -> void`
+  DELETE `/api/assets/{id}`, throws on error
+
+---
+
+### `components/CameraCapture.tsx`
+
+**Props:**
+```typescript
+CameraCaptureProps {
+  onUploadSuccess?: () => void
+}
+```
+
+**State:**
+- `ready: boolean` - Camera stream active
+- `busy: boolean` - Upload in progress
+- `error: string | null` - Error message
+
+**Key Logic:**
+- `useEffect` hook: Initialize camera with `getUserMedia` (facingMode: environment)
+- Cleanup on unmount: stop all media tracks
+- `capture()`: Canvas snapshot → JPEG blob (0.9 quality) → upload → callback
+
+**Browser Requirements:**
+- HTTPS for camera access (enforced by browsers)
+- `playsInline` attribute for iOS Safari
+- Prefer rear camera on mobile devices
+
+---
+
+### `App.tsx` - Main UI
+
+**State:**
+- `assets: Asset[]` - Gallery items
+- `total: number` - Total count for pagination
+- `loading: boolean` - Fetch state
+- `deleteConfirm: string | null` - Modal state for delete confirmation
+- `selectedAsset: Asset | null` - Full-screen preview modal
+
+**Functions:**
+
+- `async refresh() -> void`
+  Fetch assets and update state
+
+- `async handleDelete(id: string) -> void`
+  Delete asset, refresh gallery, close modal
+
+**UI Features:**
+- Responsive grid (2-5 columns based on breakpoint)
+- Loading skeletons during fetch
+- Delete confirmation modal with inline styles
+- Full-screen image preview modal
+- Real-time upload feedback
+
+---
+
+### `main.tsx`
+React 18 StrictMode app initialization. Renders `<App />` to `#root`.
+
+---
+
+## Infrastructure
+
+### `docker-compose.yml`
+
+**Services:**
+
+1. **db** (postgres:16)
+   - Port: 5432
+   - Volume: `pgdata:/var/lib/postgresql/data`
+   - Env: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+
+2. **server** (Flask)
+   - Port: 8000
+   - Volume: `server_data:/app/data` (file storage)
+   - Depends: db
+   - Env: DATABASE_URL, FLASK_DEBUG
+
+3. **client** (optional dev)
+   - Vite dev server on port 5173
+   - Proxy `/api/*` → `http://localhost:8000`
+
+---
+
+### `client/vite.config.ts`
+
+**Plugins:**
+- `@vitejs/plugin-react` - Fast refresh
+- `@vitejs/plugin-basic-ssl` - Local HTTPS for camera
+- `vite-plugin-pwa` - Service worker, manifest, offline support
+
+**Config:**
+- Server: `0.0.0.0:5173` for mobile device access
+- Proxy: `/api` → `http://localhost:8000` (dev only)
+- PWA: Auto-update, fullscreen display, sky-blue theme
+
+---
+
+## File System Map
+
+```
+skout/
+├── server/
+│   ├── app.py              Flask routes + business logic
+│   ├── db.py               PostgreSQL connection + tx context
+│   ├── storage.py          Hash-based file operations
+│   ├── schema.sql          Database schema definition
+│   ├── Dockerfile          Python 3.11 slim container
+│   ├── requirements.txt    Flask, psycopg, flask-cors
+│   └── data/               Runtime file storage (volume)
+│
+├── client/
+│   ├── src/
+│   │   ├── main.tsx        React app entry point
+│   │   ├── App.tsx         Gallery UI + state management
+│   │   ├── lib/
+│   │   │   └── api.ts      HTTP client functions
+│   │   └── components/
+│   │       └── CameraCapture.tsx  getUserMedia + upload
+│   ├── vite.config.ts      Build config + PWA plugin
+│   ├── tailwind.config.js  Utility-first CSS config
+│   └── package.json        Node dependencies
+│
+├── docker-compose.yml      Service orchestration
+├── CLAUDE.md               Project memory for AI assistants
+└── llms.txt                This file
+```
+
+---
+
+## Connection Map (ASCII)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Browser (Mobile/Desktop)                                     │
+│  ↓ getUserMedia API (HTTPS required)                        │
+│  ↓ fetch("/api/*")                                          │
+└──────────────────┬──────────────────────────────────────────┘
+                   │
+        ┌──────────▼─────────────┐
+        │ Vite Dev Server        │ (dev only)
+        │ :5173                  │
+        │ Proxy /api → :8000     │
+        └──────────┬─────────────┘
+                   │
+        ┌──────────▼─────────────┐
+        │ React App              │
+        │  • main.tsx            │
+        │  • App.tsx             │ ◄─── CameraCapture.tsx
+        │  • api.ts              │
+        └──────────┬─────────────┘
+                   │ HTTP REST
+        ┌──────────▼─────────────┐
+        │ Flask Server           │
+        │ :8000                  │
+        │  • app.py              │ ◄─── Routes
+        │  • db.py (tx)          │ ◄─── Transaction mgmt
+        │  • storage.py          │ ◄─── File I/O
+        └─────┬────────┬─────────┘
+              │        │
+     ┌────────▼──┐  ┌──▼─────────────────┐
+     │ PostgreSQL│  │ File System        │
+     │ :5432     │  │ /app/data/         │
+     │           │  │  • Hash-based dirs │
+     │ • assets  │  │  • Deduplication   │
+     │   table   │  │  • Reference count │
+     └───────────┘  └────────────────────┘
+        (metadata)       (binary data)
+```
+
+**Data Flow Example (Upload):**
+```
+Camera → Canvas → Blob → FormData → POST /api/assets →
+  ├─ save_file(data) → SHA-256 → /app/data/ab/cd/abcd...
+  └─ INSERT INTO assets (filename, mime, size, file_hash)
+```
+
+**Data Flow Example (Delete with Dedup):**
+```
+DELETE /api/assets/{id} →
+  ├─ SELECT file_hash FROM assets WHERE id = {id}
+  ├─ DELETE FROM assets WHERE id = {id}
+  ├─ SELECT COUNT(*) FROM assets WHERE file_hash = {hash}
+  └─ IF count = 0 THEN delete_file(hash)
+```
+
+---
+
+## Code Style Guide
+
+### Backend (Python)
+- **No ORM** - Raw SQL with parameterized queries (`%s` placeholders)
+- **Context managers** - Use `with tx()` for transactions, `with get_conn()` for reads
+- **Type hints** - Function signatures include types where beneficial
+- **Explicit is better** - No magic, clear control flow
+- **Security** - Never string concat SQL, always parameterize
+- **Error handling** - Return appropriate HTTP status codes (400, 404, 413, 415, 500)
+
+### Frontend (TypeScript/React)
+- **Functional components** - Hooks over classes
+- **TypeScript strict** - Explicit types for props, state, API responses
+- **Inline styles for conflicts** - Override Tailwind when needed (modals, camera button)
+- **Error boundaries** - Try/catch with user-friendly messages
+- **Async/await** - Consistent promise handling
+- **Cleanup** - `useEffect` returns cleanup functions for resources
+
+### General Conventions
+- **DRY principle** - Shared logic in helpers (db.py:tx, storage.py functions)
+- **Single Responsibility** - Files have clear purposes (app.py=routes, storage.py=files)
+- **Constants at top** - `MAX_BYTES`, `DSN`, etc. defined early
+- **Comments for "why"** - Code explains "what", comments explain "why"
+- **Fail fast** - Validate early (UUID check, MIME type, file size)
+
+---
+
+## Data Formats
+
+### API Responses
+```json
+// GET /api/assets
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "created_at": "2025-10-02T12:34:56.789Z",
+      "filename": "capture_1696251296789.jpg",
+      "mime": "image/jpeg",
+      "size": 245678
+    }
+  ],
+  "total": 42
+}
+
+// POST /api/assets (201 Created)
+{
+  "id": "...",
+  "created_at": "...",
+  "filename": "...",
+  "mime": "...",
+  "size": 123456
+}
+
+// DELETE /api/assets/{id}
+{
+  "deleted": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+### Environment Variables
+```bash
+POSTGRES_PASSWORD=postgres
+POSTGRES_USER=postgres
+POSTGRES_DB=postgres
+DATABASE_URL=postgresql://postgres:postgres@db:5432/postgres
+FLASK_DEBUG=1  # dev only
+```
+
+---
+
+## Development Workflow
+
+### Start Services
+```bash
+# Backend + Database
+docker compose up -d --build
+
+# Frontend (separate terminal, requires Node 18+)
+cd client && npm install && npm run dev -- --host 0.0.0.0
+```
+
+### Mobile Testing
+```bash
+# Vite serves HTTPS via basicSsl plugin
+# Access via https://<local-ip>:5173
+# Or use: ngrok http 5173
+```
+
+### Database Access
+```bash
+docker compose exec db psql -U postgres -d postgres
+```
+
+### Reset Everything
+```bash
+docker compose down -v  # destroys volumes
+docker compose up -d
+```
+
+---
+
+## Architectural Insights
+
+### Strengths
+- **Deduplication** - Hash-based storage automatically deduplicates identical images
+- **Reference counting** - File deletion only occurs when last asset referencing it is removed
+- **Scalability hooks** - File storage can migrate to S3/GCS without schema changes
+- **Performance** - Direct SQL faster than ORM for simple CRUD; filesystem faster than DB blobs
+- **Simplicity** - 4 backend files, 3 frontend files, minimal dependencies
+
+### Trade-offs
+- **No auth** - Acceptable for MVP, must add before production (JWT recommended)
+- **No migrations** - Schema changes require manual SQL (acceptable for small team)
+- **7MB limit** - Hard-coded, sufficient for mobile photos, revisit for DSLR support
+- **Single server** - File storage on one host, needs distributed FS or object storage to scale horizontally
+
+### Evolution Path
+1. **Next 10%** - JWT auth, rate limiting, ETag caching
+2. **Next 20%** - Image resize/optimize, CDN, background sync (PWA)
+3. **Scale** - S3/GCS storage, read replicas, Redis cache
+
+### Known Issues
+- **Camera on HTTP** - Fails due to browser security; HTTPS mandatory (Vite basicSsl solves locally)
+- **iOS Safari quirks** - Requires `playsInline` attribute on `<video>` element
+- **CSS framework conflicts** - Inline styles override Tailwind where needed (camera button, modals)
+
+---
+
+## Security Checklist (Pre-Production)
+
+- [ ] Add authentication (JWT recommended)
+- [ ] Rate limiting on upload endpoints
+- [ ] CORS whitelist (currently open: `origins: "*"`)
+- [ ] Input sanitization (filename, MIME type)
+- [ ] File type validation beyond MIME (magic bytes)
+- [ ] Virus scanning for uploads
+- [ ] HTTPS enforced (redirect HTTP → HTTPS)
+- [ ] CSP headers
+- [ ] Database connection pooling limits
+- [ ] Audit logging for deletions
+
+---
+
+## Veteran Developer Notes
+
+**What makes this codebase "clean":**
+- No abstraction layers for the sake of abstraction
+- Transaction boundaries are explicit and visible
+- File storage is a pure function of content (idempotent)
+- TypeScript types match database schema exactly
+- Every route has one job, no hidden side effects
+- Separation of concerns: storage.py knows nothing about Flask, db.py knows nothing about files
+
+**What to watch for:**
+- `file_hash` column has no uniqueness constraint (intentional - multiple assets can share file)
+- Delete endpoint has race condition potential (two deletes of same hash simultaneously) - acceptable for MVP
+- No cleanup job for orphaned files (if DB delete succeeds but file delete fails)
+- Canvas quality hardcoded to 0.9 (trade-off: size vs quality)
+
+**Refactoring candidates:**
+- Extract validation logic (MIME type, file size) to separate module
+- Add API versioning (`/api/v1/assets`)
+- Connection pooling (psycopg supports it, not configured)
+- Thumbnail generation pipeline
+- Batch upload support
+
+---
+
+**Last Updated:** 2025-10-02
+**Total Lines of Code:** ~800 (300 backend, 500 frontend)
+**Test Coverage:** E2E integration tests exist (test_app.py, test_storage.py)

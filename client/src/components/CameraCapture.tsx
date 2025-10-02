@@ -157,8 +157,8 @@ export default function CameraCapture({ onUploadSuccess, token }: CameraCaptureP
               onClick={capture}
               disabled={busy}
               style={{
-                width: '64px',
-                height: '64px',
+                width: '56px',
+                height: '56px',
                 backgroundColor: 'white',
                 borderRadius: '50%',
                 boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -184,8 +184,8 @@ export default function CameraCapture({ onUploadSuccess, token }: CameraCaptureP
                 }}></div>
               ) : (
                 <div style={{
-                  width: '48px',
-                  height: '48px',
+                  width: '42px',
+                  height: '42px',
                   backgroundColor: '#0ea5e9',
                   borderRadius: '50%',
                   display: 'flex',
